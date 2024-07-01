@@ -1,23 +1,25 @@
-Shader "Unlit/SampleShader"
+Shader"Unlit/SampleShader"
 {
     Properties
     {
+        _Color("Color", Color) = (1, 1, 1, 0)
+        _Gloss("Gloss", float) = 1
+        _LightFallOffController("LightFallOffController", Range(0.1, 1.0)) = 0.5
+        _SpecularFallOffController("SpecularFallOffController", Range(0.1, 1.0)) = 0.1
         //_MainTex ("Texture", 2D) = "white" {}
     }
     SubShader
     {
         Tags { "RenderType"="Opaque" }
-        //LOD 100
 
         Pass
         {
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            // make fog work
-            //#pragma multi_compile_fog
 
             #include "UnityCG.cginc"
+            #include "Lighting.cginc"
 
             // Mesh Data: Position, Vertex Color, Tangent, UVs, Normal
             struct VertexInput
@@ -25,45 +27,64 @@ Shader "Unlit/SampleShader"
                 float4 vertex : POSITION;
                 float2 uv0 : TEXCOORD0;
                 float3 normal : NORMAL;
-                //float2 uv : TEXCOORD0;
             };
             
             struct VertexOutput
             {
-                //float2 uv : TEXCOORD0;
-                //UNITY_FOG_COORDS(1)
                 float4 vertex : SV_POSITION;
                 float2 uv0 : TEXCOORD0;
                 float3 normal : NORMAL;
+                float3 worldPos: TEXCOORD1;
             };
 
             //sampler2D _MainTex;
             //float4 _MainTex_ST;
+            float4 _Color;
+            float _Gloss;
+            float _LightFallOffController;
+            float _SpecularFallOffController;
 
             VertexOutput vert (VertexInput v)
             {
                 VertexOutput o;
                 o.uv0 = v.uv0;
                 o.normal = v.normal;
+                o.worldPos = mul(unity_ObjectToWorld, v.vertex);
                 o.vertex = UnityObjectToClipPos(v.vertex);
-                //o.uv = TRANSFORM_TEX(v.uv, _MainTex);
-                //UNITY_TRANSFER_FOG(o,o.vertex);
                 return o;
             }
 
-            float4 frag (VertexOutput i) : SV_Target
+            float4 frag (VertexOutput o) : SV_Target
             {
-                //// sample the texture
-                //fixed4 col = tex2D(_MainTex, i.uv);
-                //// apply fog
-                //UNITY_APPLY_FOG(i.fogCoord, col);
-                //return col;
-                float2 uv = i.uv0;
-                float3 lightDir = normalize(float3(1, 1, 1));
-                //float3 normals = i.normal * 0.5 + 0.5;
-                float simpleLight = dot(lightDir, i.normal);
-                float3 lightColor = float3(0.1, 0.2, 0.7);
-                return float4(lightColor * simpleLight, 0);
+                float2 uv = o.uv0;
+                float3 normal = normalize(o.normal);
+    
+                float3 lightDir = _WorldSpaceLightPos0.xyz;
+                float3 lightColor = _LightColor0.rgb;
+    
+                float lightFallOff = max(0, dot(lightDir, normal));
+                lightFallOff = step(_LightFallOffController, lightFallOff);
+    
+                float3 directDiffuseLight = lightColor * lightFallOff;
+                
+                //float3 ambientLight  = float3(0.83, 0.25, 0.47);
+                float3 ambientLight = float3(0.1, 0.1, 0.1);
+                float3 camPos = _WorldSpaceCameraPos;
+                float3 fragToCam = camPos - o.worldPos;
+                float3 viewDir = normalize(fragToCam);
+    
+                float3 viewReflect = reflect(-viewDir, normal);
+    
+                float3 specularFallOff = max(0, dot(viewReflect, lightDir));
+                specularFallOff = pow(specularFallOff, _Gloss);
+                specularFallOff = step(_SpecularFallOffController, specularFallOff);
+    
+                float3 directSpecular = specularFallOff * lightColor;
+    
+                float3 diffuseLight = ambientLight + directDiffuseLight;
+                float3 finalSurfaceColor = diffuseLight * _Color.rgb + directSpecular;
+    
+                return float4(finalSurfaceColor, 0);
             }
             ENDCG
         }
