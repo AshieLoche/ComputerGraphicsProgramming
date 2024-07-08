@@ -4,8 +4,8 @@ Shader"Unlit/SampleShader"
     {
         _Color("Color", Color) = (1, 1, 1, 0)
         _Gloss("Gloss", float) = 1
-        _LightFallOffController("LightFallOffController", Range(0.1, 1.0)) = 0.5
-        _SpecularFallOffController("SpecularFallOffController", Range(0.1, 1.0)) = 0.1
+        _LightFallOffController("LightFallOffController", Range(0.1, 10.0)) = 0.5
+        _SpecularFallOffController("SpecularFallOffController", Range(0.1, 10.0)) = 0.1
         //_MainTex ("Texture", 2D) = "white" {}
     }
     SubShader
@@ -54,16 +54,38 @@ Shader"Unlit/SampleShader"
                 return o;
             }
 
+            float3 myLerp(float3 a, float3 b, float3 t)
+            {
+                return t * b + (1.0 - t) * a;
+            }
+
+            float3 invLerp(float3 a, float3 b, float3 value)
+            {
+                return (value - a) / (b - a);
+            }
+
+            float posterize(float steps, float value)
+            {
+                return floor(value * steps) / steps;
+            }
+
             float4 frag (VertexOutput o) : SV_Target
             {
                 float2 uv = o.uv0;
+                
+                float3 colorA = float3(0.1, 0.8, 1);
+                float3 colorB = float3(1, 0.1, 0.8);
+                float t = uv.y;
+    
+                float3 blend = myLerp(colorA, colorB, t);
+    
                 float3 normal = normalize(o.normal);
     
                 float3 lightDir = _WorldSpaceLightPos0.xyz;
                 float3 lightColor = _LightColor0.rgb;
     
                 float lightFallOff = max(0, dot(lightDir, normal));
-                lightFallOff = step(_LightFallOffController, lightFallOff);
+                lightFallOff = posterize(_LightFallOffController, lightFallOff);
     
                 float3 directDiffuseLight = lightColor * lightFallOff;
                 
@@ -77,7 +99,7 @@ Shader"Unlit/SampleShader"
     
                 float3 specularFallOff = max(0, dot(viewReflect, lightDir));
                 specularFallOff = pow(specularFallOff, _Gloss);
-                specularFallOff = step(_SpecularFallOffController, specularFallOff);
+                specularFallOff = posterize(_SpecularFallOffController, specularFallOff);
     
                 float3 directSpecular = specularFallOff * lightColor;
     
